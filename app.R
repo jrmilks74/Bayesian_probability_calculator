@@ -73,7 +73,13 @@ ui <- fluidPage(
                         p("Therefore, out of the 10,089 people in the population who test positive, only 99 actually have the disease, *despite having a highly accurate test*. That gives a probability of actually having the disease *even with a positive test* of [99 / (99 + 9,990)] * 100 = 0.98%."),
                         p("That is one of the reasons doctors order follow up tests as each positive test decreases the chances that the results are a false positive.")
                 )
-        )
+        ),
+        h4("Created by: James Milks"),
+        br(),
+        "2024 May 13",
+        br(),
+        "Code available at:",
+        a(href = "https://github.com/jrmilks74/Bayesian_probability_calculator", "https://github.com/jrmilks74/Bayesian_probability_calculator")
 )
 
 # Define server logic
