@@ -1,144 +1,189 @@
+# Bayesian Probability Calculator for Medical Tests
+# Cleaned & improved: iterates tests, shows posterior after each step,
+# and computes overall false-positive / false-negative given the observed result.
+
 library(shiny)
+library(dplyr)
+library(scales)
 
-# Define UI
-ui <- fluidPage(
-        titlePanel("Bayesian Probability Calculator for Medical Tests"),
-        tabsetPanel(
-                tabPanel(
-                        "Calculator",
-                        sidebarLayout(
-                                sidebarPanel(
-                                        h5("Prior probability: Population rate"),
-                                        numericInput("cases", "Cases", value = 25),
-                                        numericInput("population", "per population", value = 1000),
-                                        h5("Test Sensitivity/Specificity (%)"),
-                                        numericInput("sensitivity_test1", "Sensitivity (Test 1)", 
-                                                     value = 95, 
-                                                     min = 0, 
-                                                     max = 100),
-                                        numericInput("specificity_test1", "Specificity (Test 1)", 
-                                                     value = 85, 
-                                                     min = 0, 
-                                                     max = 100),
-                                        numericInput("sensitivity_test2", "Sensitivity (Test 2)", 
-                                                     value = 95, 
-                                                     min = 0, 
-                                                     max = 100),
-                                        numericInput("specificity_test2", "Specificity (Test 2)", 
-                                                     value = 85, 
-                                                     min = 0, 
-                                                     max = 100),
-                                        numericInput("sensitivity_test3", "Sensitivity (Test 3)", 
-                                                     value = 95, 
-                                                     min = 0, 
-                                                     max = 100),
-                                        numericInput("specificity_test3", "Specificity (Test 3)", 
-                                                     value = 85, 
-                                                     min = 0, 
-                                                     max = 100),
-                        h5("Test Results"),
-                        radioButtons("test1_result", "Test 1 Result", 
-                                     choices = c("Negative", "Positive"), 
-                                     selected = "Negative"),
-                        radioButtons("test2_result", "Test 2 Result", 
-                                     choices = c("Negative", "Positive"), 
-                                     selected = "Negative"),
-                        radioButtons("test3_result", "Test 3 Result", 
-                                     choices = c("Negative", "Positive"), 
-                                     selected = "Negative"),
-                        actionButton("calculate", "Calculate")
-                        ),
-                        
-                        mainPanel(
-                                h3("Results:"),
-                                h4("Probability of actually having the condition after the first test:"),
-                                verbatimTextOutput("result_test1"),
-                                h4("Probability of having the condition after the second test:"),
-                                verbatimTextOutput("result_test2"),
-                                h4("Probability of having the condition after the third test:"),
-                                verbatimTextOutput("result_test3")
-                                )
-                        ),
-                ),
-                
-                tabPanel(
-                        "FAQ",
-                        h4("Question: What is sensitivity and specificity?"),
-                        p("Answer: Sensitivity is the propability that someone with the disease will test positive. Specificity is the chance that someone without the disease will test negative."),
-                        p("The probability of a false negative (someone with the disease testing negative) is 1 - sensitivity while the probability of a false positive (someone without the disease testing positive) is 1 - specificity."),
-                        h4("Question: The probability of having the disease given a positive test result seems low considering how accurate the test is."),
-                        p("Answer: If a disease is rare enough in the population, most of the positive results will actually be false positives, hence the low probability of actually having the disease despite getting a positive test result. Think of it like this:"), 
-                        p("A disease is present in 1 out of 1,000 people. If we have a population of 100,000 people, that means 100 of them will have the disease and 99,900 will not. We have a test with a 99% sensitivity and 90% specificity. If we test all 100,000, 99 of the ones that have the disease will test positive (true positives). One person with the disease will test negative (false negative). So far, so good."),
-                        p("The issue comes when we talk about the people who don't have the disease. With 90% specificity, we expect 89,910 out of the 99,900 negatives to test negative (true negatives) and 9,990 to test positive (false positives)."),
-                        p("Therefore, out of the 10,089 people in the population who test positive, only 99 actually have the disease, *despite having a highly accurate test*. That gives a probability of actually having the disease *even with a positive test* of [99 / (99 + 9,990)] * 100 = 0.98%."),
-                        p("That is one of the reasons doctors order follow up tests as each positive test decreases the chances that the results are a false positive.")
-                )
-        ),
-        h4("Created by: James Milks"),
-        br(),
-        "2024 May 13",
-        br(),
-        "Code available at:",
-        a(href = "https://github.com/jrmilks74/Bayesian_probability_calculator", "https://github.com/jrmilks74/Bayesian_probability_calculator")
-)
+# ---------- Helpers ----------
+clamp01 <- function(x) pmin(pmax(x, 0), 1)
 
-# Define server logic
-server <- function(input, output) {
-        
-        observeEvent(input$calculate, {
-                prior_prob <- input$cases / input$population
-                
-                sensitivity_test1 <- input$sensitivity_test1 / 100
-                specificity_test1 <- input$specificity_test1 / 100
-                sensitivity_test2 <- input$sensitivity_test2 / 100
-                specificity_test2 <- input$specificity_test2 / 100
-                sensitivity_test3 <- input$sensitivity_test3 / 100
-                specificity_test3 <- input$specificity_test3 / 100
-                
-                # Determine test results
-                test1_result <- input$test1_result
-                test2_result <- input$test2_result
-                test3_result <- input$test3_result
-                
-                # Convert radio button selections to "Positive" or "Negative"
-                test1_result <- ifelse(test1_result == "Positive", "Positive", "Negative")
-                test2_result <- ifelse(test2_result == "Positive", "Positive", "Negative")
-                test3_result <- ifelse(test3_result == "Positive", "Positive", "Negative")
-                
-                # Calculate posterior probability after each test
-                posterior_test1 <- if (test1_result == "Positive") {
-                        (prior_prob * sensitivity_test1) / ((prior_prob * sensitivity_test1) + ((1 - prior_prob) * (1 - specificity_test1)))
-                } else {
-                        (prior_prob * (1 - sensitivity_test1)) / ((prior_prob * (1 - sensitivity_test1)) + ((1 - prior_prob) * specificity_test1))
-                }
-                
-                posterior_test2 <- if (test2_result == "Positive") {
-                        (posterior_test1 * sensitivity_test2) / ((posterior_test1 * sensitivity_test2) + ((1 - posterior_test1) * (1 - specificity_test2)))
-                } else {
-                        (posterior_test1 * (1 - sensitivity_test2)) / ((posterior_test1 * (1 - sensitivity_test2)) + ((1 - posterior_test1) * specificity_test2))
-                }
-                
-                posterior_test3 <- if (test3_result == "Positive") {
-                        (posterior_test2 * sensitivity_test3) / ((posterior_test2 * sensitivity_test3) + ((1 - posterior_test2) * (1 - specificity_test3)))
-                } else {
-                        (posterior_test2 * (1 - sensitivity_test3)) / ((posterior_test2 * (1 - sensitivity_test3)) + ((1 - posterior_test2) * specificity_test3))
-                }
-                
-                # Output posterior probabilities after each test
-                output$result_test1 <- renderPrint({
-                        paste("Probability: ", round(posterior_test1 * 100, 1), "%", sep = "")
-                })
-                
-                output$result_test2 <- renderPrint({
-                        paste("Probability: ", round(posterior_test2 * 100, 1), "%", sep = "")
-                })
-                
-                output$result_test3 <- renderPrint({
-                        paste("Probability: ", round(posterior_test3 * 100, 1), "%", sep = "")
-                })
-                
-        })
+as_pct <- function(x, digits = 1) percent(x, accuracy = 10^(-digits))
+
+# Given prior (P[D]), sensitivity (Se), specificity (Sp), and a result ("Positive"/"Negative"),
+# return a list with posterior P[D|result], and the sequence-level FP/FN probabilities.
+update_posterior <- function(prior, Se, Sp, result) {
+  prior <- clamp01(prior); Se <- clamp01(Se); Sp <- clamp01(Sp)
+  if (result == "Positive") {
+    # Bayes: P(D|+) = Se*P(D) / [Se*P(D) + (1-Sp)*P(~D)]
+    num <- Se * prior
+    den <- Se * prior + (1 - Sp) * (1 - prior)
+    post <- ifelse(den > 0, num / den, NA_real_)
+    list(
+      posterior = post,
+      overall_fp = 1 - post,   # probability it's a false positive given a positive result
+      overall_fn = NA_real_    # not applicable for a positive result
+    )
+  } else {
+    # Bayes: P(D|-) = (1-Se)*P(D) / [(1-Se)*P(D) + Sp*P(~D)]
+    num <- (1 - Se) * prior
+    den <- (1 - Se) * prior + Sp * (1 - prior)
+    post <- ifelse(den > 0, num / den, NA_real_)
+    list(
+      posterior = post,
+      overall_fp = NA_real_,    # not applicable for a negative result
+      overall_fn = post         # probability it's a false negative given a negative result
+    )
+  }
 }
 
-# Run the application
+ui <- fluidPage(
+  titlePanel("Bayesian Probability Calculator for Medical Tests"),
+  tabsetPanel(
+    tabPanel(
+      "Calculator",
+      sidebarLayout(
+        sidebarPanel(
+          h5("Prior probability: Population rate"),
+          numericInput("cases", "Cases", value = 25, min = 0, step = 1),
+          numericInput("population", "per population", value = 1000, min = 1, step = 1),
+          h5("Test Sensitivity/Specificity (%)"),
+          numericInput("sensitivity_test1", "Sensitivity (Test 1)", value = 95, min = 0, max = 100),
+          numericInput("specificity_test1", "Specificity (Test 1)", value = 85, min = 0, max = 100),
+          numericInput("sensitivity_test2", "Sensitivity (Test 2)", value = 95, min = 0, max = 100),
+          numericInput("specificity_test2", "Specificity (Test 2)", value = 85, min = 0, max = 100),
+          numericInput("sensitivity_test3", "Sensitivity (Test 3)", value = 95, min = 0, max = 100),
+          numericInput("specificity_test3", "Specificity (Test 3)", value = 85, min = 0, max = 100),
+
+          h5("Test Results"),
+          radioButtons("test1_result", "Test 1 Result",
+                       choices = c("Negative", "Positive"), selected = "Negative"),
+          radioButtons("test2_result", "Test 2 Result",
+                       choices = c("Negative", "Positive"), selected = "Negative"),
+          radioButtons("test3_result", "Test 3 Result",
+                       choices = c("Negative", "Positive"), selected = "Negative"),
+
+          actionButton("calculate", "Calculate")
+        ),
+        mainPanel(
+          h3("Results"),
+          tableOutput("results_table"),
+          tags$hr(),
+          h4("Posterior (probability of having the condition) after each test"),
+          h5("After Test 1"),
+          verbatimTextOutput("result_test1"),
+          h5("After Test 2"),
+          verbatimTextOutput("result_test2"),
+          h5("After Test 3"),
+          verbatimTextOutput("result_test3"),
+          tags$hr(),
+          tags$small(
+            em("Notes:"),
+            tags$ul(
+              tags$li("Overall false positive after a positive result equals 1 − posterior."),
+              tags$li("Overall false negative after a negative result equals posterior."),
+              tags$li("If a row shows N/A for FP or FN, it’s not applicable to that result sign.")
+            )
+          )
+        )
+      )
+    ),
+    tabPanel(
+      "FAQ",
+      h4("What are sensitivity and specificity?"),
+      p("Sensitivity is the probability that someone with the disease will test positive. Specificity is the probability that someone without the disease will test negative."),
+      p("The probability of a false negative (someone with the disease testing negative) is 1 − sensitivity; the probability of a false positive (someone without the disease testing positive) is 1 − specificity."),
+      h4("Why can P(disease | positive) be low even with accurate tests?"),
+      p("When a disease is rare, even a specific test can generate many false positives out of the large disease-free group. Bayes’ rule combines the prior (prevalence) with test accuracy to yield the posterior probability after a result."),
+      h4("Sequential testing"),
+      p("Sequential tests update the prior to the posterior from the previous step. After each result, we recompute the new probability of disease and the overall probability that the observed result is a false positive (for a positive) or a false negative (for a negative).")
+    )
+  ),
+  h4("Created by: James Milks"),
+  br(),
+  "2024 May 13",
+  br(),
+  "Code available at: ",
+  a(href = "https://github.com/jrmilks74/Bayesian_probability_calculator",
+    "https://github.com/jrmilks74/Bayesian_probability_calculator")
+)
+
+server <- function(input, output, session) {
+
+  observeEvent(input$calculate, {
+    # Validate basic inputs
+    pop <- max(1, as.integer(input$population))
+    cases <- max(0, as.integer(input$cases))
+    prior <- clamp01(cases / pop)
+
+    tests <- tibble::tibble(
+      test = paste0("Test ", 1:3),
+      result = c(input$test1_result, input$test2_result, input$test3_result),
+      sens = clamp01(c(input$sensitivity_test1,
+                       input$sensitivity_test2,
+                       input$sensitivity_test3) / 100),
+      spec = clamp01(c(input$specificity_test1,
+                       input$specificity_test2,
+                       input$specificity_test3) / 100)
+    )
+
+    # Iterate tests, updating posterior each time
+    priors <- numeric(nrow(tests))
+    posteriors <- numeric(nrow(tests))
+    overall_fp <- overall_fn <- rep(NA_real_, nrow(tests))
+
+    current_prior <- prior
+    for (i in seq_len(nrow(tests))) {
+      priors[i] <- current_prior
+      upd <- update_posterior(
+        prior = current_prior,
+        Se = tests$sens[i],
+        Sp = tests$spec[i],
+        result = tests$result[i]
+      )
+      posteriors[i] <- upd$posterior
+      overall_fp[i] <- upd$overall_fp
+      overall_fn[i] <- upd$overall_fn
+      current_prior <- posteriors[i]
+    }
+
+    results_tbl <- tests %>%
+      mutate(
+        `Prior (before test)` = as_pct(priors),
+        Sensitivity = as_pct(sens),
+        Specificity = as_pct(spec),
+        `Observed result` = result,
+        `Posterior P(disease)` = as_pct(posteriors),
+        `Overall False Positive` = ifelse(is.na(overall_fp), "N/A", as_pct(overall_fp)),
+        `Overall False Negative` = ifelse(is.na(overall_fn), "N/A", as_pct(overall_fn))
+      ) %>%
+      select(
+        Test = test,
+        `Observed result`,
+        `Prior (before test)`,
+        Sensitivity,
+        Specificity,
+        `Posterior P(disease)`,
+        `Overall False Positive`,
+        `Overall False Negative`
+      )
+
+    output$results_table <- renderTable({
+      results_tbl
+    }, striped = TRUE, hover = TRUE, spacing = "s")
+
+    # Keep your original quick-read outputs
+    output$result_test1 <- renderPrint({
+      paste0("Probability: ", as_pct(posteriors[1]))
+    })
+    output$result_test2 <- renderPrint({
+      paste0("Probability: ", as_pct(posteriors[2]))
+    })
+    output$result_test3 <- renderPrint({
+      paste0("Probability: ", as_pct(posteriors[3]))
+    })
+  })
+}
+
 shinyApp(ui = ui, server = server)
