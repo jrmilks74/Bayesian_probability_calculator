@@ -104,6 +104,8 @@ ui <- fluidPage(
   br(),
   "2024 May 13",
   br(),
+  "Updated 2025 Sept 10",
+  br(),
   "Code available at: ",
   a(href = "https://github.com/jrmilks74/Bayesian_probability_calculator",
     "https://github.com/jrmilks74/Bayesian_probability_calculator")
